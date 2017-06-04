@@ -4,7 +4,6 @@ import br.ufsc.inf.ine5611.converters.Converter;
 import br.ufsc.inf.ine5611.converters.scheduled.ConverterTask;
 import br.ufsc.inf.ine5611.converters.scheduled.Priority;
 import br.ufsc.inf.ine5611.converters.scheduled.ScheduledConverter;
-import com.google.common.base.Preconditions;
 import com.google.common.base.Stopwatch;
 import java.io.IOException;
 import java.io.InputStream;
@@ -14,7 +13,6 @@ import java.util.concurrent.*;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import static javafx.scene.input.KeyCode.T;
 
 public class PriorityScheduledConverter implements ScheduledConverter, Comparator<ScheduledConverterTask> {
     public static final int DEFAULT_QUANTUM_LOW = 50;
@@ -42,12 +40,6 @@ public class PriorityScheduledConverter implements ScheduledConverter, Comparato
         ScheduledConverterTask task = (ScheduledConverterTask) converterTask;
         task.complete(null);
         queue.remove(converterTask);
-        tarefaAtual = (ScheduledConverterTask) queue.peek();
-        try {
-            this.processFor(getQuantum(tarefaAtual.getPriority()), MILLISECONDS);
-        } catch (InterruptedException ex) {
-            Logger.getLogger(PriorityScheduledConverter.class.getName()).log(Level.SEVERE, null, ex);
-        }
     }
 
     @Override
@@ -69,12 +61,17 @@ public class PriorityScheduledConverter implements ScheduledConverter, Comparato
     public Collection<ConverterTask> getAllTasks() {
         /* Junte todas as tarefas não completas em um Collection */
         //TODO implementar
-        return null;
+        Collection<ConverterTask> queueCollection = queue;
+        ArrayList<ConverterTask> retorno = new ArrayList<>();
+        for(ConverterTask tarefa : queueCollection){
+            if(!tarefa.isDone()){
+                retorno.add(tarefa);
+            }
+        }
+        return retorno;
     } 
     
     private void cancel(ConverterTask convertTask){
-        converter.interrupt();
-        convertTask.cancel(true);
         queue.remove(convertTask);
     }
 
@@ -88,24 +85,12 @@ public class PriorityScheduledConverter implements ScheduledConverter, Comparato
         ScheduledConverterTask novaTask = new ScheduledConverterTask(inputStream, 
                 outputStream, this::cancel, mediaType, inputBytes, priority, contador++);
         queue.add(novaTask);
-        try {
-            if(queue.isEmpty()){
-                tarefaAtual = novaTask;
-                this.processFor(getQuantum(tarefaAtual.getPriority()), MILLISECONDS);             
-            }
-            else{
-                ScheduledConverterTask tarefaPrioritaria = (ScheduledConverterTask) queue.peek();
-                if(tarefaPrioritaria != tarefaAtual){
-                    converter.interrupt();
-                    tarefaAtual = tarefaPrioritaria;
-                    this.processFor(getQuantum(tarefaAtual.getPriority()), MILLISECONDS);
-                }
-            }
-        }  catch (InterruptedException ex) {
-            Logger.getLogger(PriorityScheduledConverter.class.getName()).log(Level.SEVERE, null, ex);
+        ScheduledConverterTask tarefaPrioritaria = (ScheduledConverterTask) queue.peek();
+        if(tarefaPrioritaria != tarefaAtual){
+            converter.interrupt();
+            //tarefaAtual = tarefaPrioritaria;
+            //this.processFor(getQuantum(tarefaAtual.getPriority()), MILLISECONDS);
         }
-        
-        
         return novaTask;
     }
 
@@ -116,26 +101,23 @@ public class PriorityScheduledConverter implements ScheduledConverter, Comparato
          * while (!tempo_estourado) {
          *   t = escolha_tarefa();
          *   t.incCycles();
-         *   this.converter.processFor(getQuantum(t.getPriority()), timeUnit);
+         *   this.converter.processFor(t, getQuantum(t.getPriority()), timeUnit);
          * }
          */
         //TODO implementar
-        long tempoEstourado = interval;
-        Date date = new Date();
-        while(tempoEstourado > 0){
-            tarefaAtual.incCycles();
+        Stopwatch watch = Stopwatch.createStarted();
+        while (watch.elapsed(timeUnit) <= interval) {
+            ScheduledConverterTask task = (ScheduledConverterTask) queue.take();
+            task.incCycles();
+            queue.add(task);
             try {
-                this.converter.processFor(tarefaAtual, tempoEstourado, timeUnit);
-                tempoEstourado--;
-                Date newDate = new Date();
-                System.out.println(date.getTime() - newDate.getTime());
-                date = newDate;
+                this.converter.processFor(tarefaAtual, getQuantum(tarefaAtual.getPriority()), timeUnit);
             } catch (IOException ex) {
-                Logger.getLogger(PriorityScheduledConverter.class.getName()).log(Level.SEVERE, null, ex);
+                tarefaAtual.completeExceptionally(ex);
+                queue.remove(tarefaAtual);
             }
-        }
-        
-        
+        }            
+                    
     }
 
     @Override
@@ -150,21 +132,47 @@ public class PriorityScheduledConverter implements ScheduledConverter, Comparato
     public int compare(ScheduledConverterTask task1, ScheduledConverterTask task2) {
         //-1 == prioridade task nova é maior que prioridade task atual
         //0 == prioridade task atual é igual a prioridade task nova
-        //1 == prioridade task nova é maior que prioridade task atual
+        //1 == prioridade task atual é maior que prioridade task atual
         Priority prioridadeTask1 = task1.getPriority();
         Priority prioridadeTask2 = task2.getPriority();
         if(prioridadeTask1.equals(Priority.NORMAL) && prioridadeTask2.equals(Priority.HIGH)){
-            return 1;
+            return -1;
         }
-        if(prioridadeTask1.equals(Priority.LOW) && prioridadeTask2.equals(Priority.HIGH)){
-            return 1;
+        else if(prioridadeTask1.equals(Priority.LOW) && prioridadeTask2.equals(Priority.HIGH)){
+            return -1;
         }
-        if(prioridadeTask1.equals(Priority.LOW) && prioridadeTask2.equals(Priority.NORMAL)){
-            return 1;
+        else if(prioridadeTask1.equals(Priority.LOW) && prioridadeTask2.equals(Priority.NORMAL)){
+            return -1;
         }
-        if(prioridadeTask1.equals(prioridadeTask2)){
-            return 0;
+        else if(prioridadeTask1.equals(prioridadeTask2)){
+            if(prioridadeTask1.equals(Priority.LOW)){
+                if(task1.getInputBytes() == task2.getInputBytes()){
+                    int retorno = comparaPrioridadePorCiclos(task1.getCycles(), task2.getCycles());
+                    return retorno;
+                }
+                else if(task1.getInputBytes() > task2.getInputBytes()){
+                    return 1;
+                }
+                else if(task2.getInputBytes() > task1.getInputBytes()){
+                    return -1;
+                }
+            }
+            else if(prioridadeTask1.equals(Priority.NORMAL)){
+                int retorno = comparaPrioridadePorCiclos(task1.getCycles(), task2.getCycles());
+                return retorno;
+            }
         }
-        return -1;
+        return 1;
+    }
+    
+    public int comparaPrioridadePorCiclos(long ciclosTask1, long ciclosTask2){
+        int retorno = 0;
+        if(ciclosTask1 > ciclosTask2){
+            retorno = 1;
+        }
+        else if(ciclosTask2 > ciclosTask1){
+            retorno = -1;
+        }
+        return retorno;
     }
 }
