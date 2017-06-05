@@ -81,7 +81,6 @@ public class PriorityScheduledConverterTest extends PriorityScheduledConverterTe
 
     @Test(enabled=true)
     public void testLowRegime() throws Exception {
-        System.out.println("começa-----------290u3092ue092/n");
         setup(100);
         priorityConverter.setQuantum(LOW, 70);
         tasks.add(spock(priorityConverter, LOW));
@@ -102,7 +101,6 @@ public class PriorityScheduledConverterTest extends PriorityScheduledConverterTe
         expected.add(new ConverterTaskEvent(COMPLETION, tasks.get(1)));
 
         Assert.assertEquals(actual, expected);
-        System.out.println("começa-----------290u3092ue092/n");
     }
 
     @Test
@@ -163,7 +161,8 @@ public class PriorityScheduledConverterTest extends PriorityScheduledConverterTe
         priorityConverter.setQuantum(HIGH, 150);
         tasks.add(spock(priorityConverter, NORMAL));
         start();
-        Thread.sleep(100);
+        Stopwatch w = Stopwatch.createStarted();
+        while (w.elapsed(TimeUnit.MILLISECONDS) < 100) {}
         tasks.add(alien(priorityConverter, HIGH));
         waitForDone();
 
@@ -231,7 +230,10 @@ public class PriorityScheduledConverterTest extends PriorityScheduledConverterTe
             return null;
         });
         try {
-            Thread.sleep(100);
+            //Thread.sleep(100);
+            Stopwatch w = Stopwatch.createStarted();
+            while (w.elapsed(TimeUnit.MILLISECONDS) < 100) {}
+
             boolean caught = false;
             try {
                 priorityConverter.processFor(1000, TimeUnit.MILLISECONDS);
@@ -248,11 +250,14 @@ public class PriorityScheduledConverterTest extends PriorityScheduledConverterTe
     public void testCancel() throws Exception {
         setup(500);
         priorityConverter.setQuantum(NORMAL, 600);
-        priorityConverter.setQuantum(NORMAL, 600);
+        priorityConverter.setQuantum(HIGH, 600);
         tasks.add(alien(priorityConverter, HIGH));
         tasks.add(alien(priorityConverter, NORMAL));
         start();
-        Thread.sleep(200);
+        //Thread.sleep(200);
+        Stopwatch w = Stopwatch.createStarted();
+        while (w.elapsed(TimeUnit.MILLISECONDS) < 100) {}
+
         tasks.get(0).cancel(true);
         waitForDone();
 

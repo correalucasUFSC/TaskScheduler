@@ -67,7 +67,8 @@ public class PriorityScheduledConverter implements ScheduledConverter, Comparato
         return retorno;
     } 
     
-    private void cancel(ConverterTask convertTask){
+    private synchronized void cancel(ConverterTask convertTask){
+        converter.cancel(convertTask);
         if(convertTask == tarefaAtual){
             converter.interrupt();
         }
@@ -107,10 +108,7 @@ public class PriorityScheduledConverter implements ScheduledConverter, Comparato
         //TODO implementar
         Stopwatch watch = Stopwatch.createStarted();
         while (watch.elapsed(timeUnit) <= interval) {
-            ScheduledConverterTask task = (ScheduledConverterTask) queue.take();
-            task.incCycles();
-            tarefaAtual = task;
-            queue.add(task);
+            pickTask();            
             try {
                 this.converter.processFor(tarefaAtual, getQuantum(tarefaAtual.getPriority()), timeUnit);
             } catch (IOException ex) {
@@ -119,6 +117,13 @@ public class PriorityScheduledConverter implements ScheduledConverter, Comparato
             }
         }            
                     
+    }
+    
+    public synchronized void pickTask() throws InterruptedException{
+        ScheduledConverterTask task = (ScheduledConverterTask) queue.take();
+        task.incCycles();
+        tarefaAtual = task;
+        queue.add(task);
     }
 
     @Override
@@ -170,6 +175,6 @@ public class PriorityScheduledConverter implements ScheduledConverter, Comparato
                 return Long.compare(task1.getEpoch(), task2.getEpoch());
             }
         }
-        return 0;
+        return -1;
     }
 }

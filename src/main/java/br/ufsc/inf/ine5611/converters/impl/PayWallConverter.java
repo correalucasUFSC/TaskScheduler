@@ -76,7 +76,8 @@ public class PayWallConverter extends AbstractConverter implements Converter {
             while (current != null && current.processingLeft > 0
                     && w.elapsed(TimeUnit.MILLISECONDS) < maxMs) {
                 Stopwatch w2 = Stopwatch.createStarted();
-                wait(taskMs);
+                while (w2.elapsed(TimeUnit.MILLISECONDS) < taskMs);
+                //wait(taskMs);
                 taskData.processingLeft -= w2.elapsed(TimeUnit.MILLISECONDS);
             }
             if (taskData.processingLeft <= 0) {
@@ -91,7 +92,11 @@ public class PayWallConverter extends AbstractConverter implements Converter {
 
     @Override
     public synchronized boolean interrupt() {
-        if (current == null) return false;
+        
+        if (current == null){
+            System.out.println("AUHIAUIHAUHAIUHAUHAIUHAUHAHHIIHU"); 
+            return false;
+        }           
         interruptListeners.forEach(l -> l.accept(current.task));
         current = null;
         notifyAll();
