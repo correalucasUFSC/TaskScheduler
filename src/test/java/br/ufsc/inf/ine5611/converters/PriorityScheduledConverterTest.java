@@ -17,6 +17,7 @@ import static br.ufsc.inf.ine5611.converters.Utils.alien;
 import static br.ufsc.inf.ine5611.converters.Utils.spock;
 import static br.ufsc.inf.ine5611.converters.scheduled.Priority.*;
 
+
 public class PriorityScheduledConverterTest extends PriorityScheduledConverterTestBase {
     @Test
     public void testHighPriority() throws Exception {
@@ -78,8 +79,9 @@ public class PriorityScheduledConverterTest extends PriorityScheduledConverterTe
         Assert.assertEquals(actual, expected);
     }
 
-    @Test
+    @Test(enabled=true)
     public void testLowRegime() throws Exception {
+        System.out.println("começa-----------290u3092ue092/n");
         setup(100);
         priorityConverter.setQuantum(LOW, 70);
         tasks.add(spock(priorityConverter, LOW));
@@ -100,6 +102,7 @@ public class PriorityScheduledConverterTest extends PriorityScheduledConverterTe
         expected.add(new ConverterTaskEvent(COMPLETION, tasks.get(1)));
 
         Assert.assertEquals(actual, expected);
+        System.out.println("começa-----------290u3092ue092/n");
     }
 
     @Test

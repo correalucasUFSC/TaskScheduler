@@ -18,9 +18,9 @@ public class PriorityScheduledConverter implements ScheduledConverter, Comparato
     public static final int DEFAULT_QUANTUM_LOW = 50;
     public static final int DEFAULT_QUANTUM_NORMAL = 100;
     public static final int DEFAULT_QUANTUM_HIGH = 200;
-    public static long contador = 1;
-    public Comparator<ScheduledConverterTask> comparador;
-    public PriorityBlockingQueue queue = new PriorityBlockingQueue(11, this);
+    public long contador = 1;
+    //public Comparator<ScheduledConverterTask> comparador;
+    public PriorityBlockingQueue<ScheduledConverterTask> queue = new PriorityBlockingQueue(1024, this);
     
     public static HashMap<Priority, Integer> quanta = new HashMap<>();
     public Converter converter;
@@ -33,13 +33,15 @@ public class PriorityScheduledConverter implements ScheduledConverter, Comparato
          *   quando uma tarefa terminou */
         this.converter = converter;
         this.converter.addCompletionListener(this::removeDaFila);
-        
+        quanta.put(Priority.HIGH, DEFAULT_QUANTUM_HIGH);
+        quanta.put(Priority.LOW, DEFAULT_QUANTUM_LOW);
+        quanta.put(Priority.NORMAL, DEFAULT_QUANTUM_NORMAL);        
     }
     
     private void removeDaFila(ConverterTask converterTask){
         ScheduledConverterTask task = (ScheduledConverterTask) converterTask;
         task.complete(null);
-        queue.remove(converterTask);
+        queue.remove(task);
     }
 
     @Override
@@ -61,18 +63,15 @@ public class PriorityScheduledConverter implements ScheduledConverter, Comparato
     public Collection<ConverterTask> getAllTasks() {
         /* Junte todas as tarefas não completas em um Collection */
         //TODO implementar
-        Collection<ConverterTask> queueCollection = queue;
-        ArrayList<ConverterTask> retorno = new ArrayList<>();
-        for(ConverterTask tarefa : queueCollection){
-            if(!tarefa.isDone()){
-                retorno.add(tarefa);
-            }
-        }
+        ArrayList<ConverterTask> retorno = new ArrayList<>(queue);
         return retorno;
     } 
     
     private void cancel(ConverterTask convertTask){
-        queue.remove(convertTask);
+        if(convertTask == tarefaAtual){
+            converter.interrupt();
+        }
+        queue.remove((ScheduledConverterTask)convertTask);
     }
 
     @Override
@@ -83,14 +82,15 @@ public class PriorityScheduledConverter implements ScheduledConverter, Comparato
          * - Se a nova tarefa for mais prioritária que a atualmente executando, interrompa */
         //TODO implementar
         ScheduledConverterTask novaTask = new ScheduledConverterTask(inputStream, 
-                outputStream, this::cancel, mediaType, inputBytes, priority, contador++);
+                outputStream, mediaType, this::cancel, inputBytes, priority, contador++);
         queue.add(novaTask);
-        ScheduledConverterTask tarefaPrioritaria = (ScheduledConverterTask) queue.peek();
-        if(tarefaPrioritaria != tarefaAtual){
-            converter.interrupt();
-            //tarefaAtual = tarefaPrioritaria;
-            //this.processFor(getQuantum(tarefaAtual.getPriority()), MILLISECONDS);
+        if(tarefaAtual != null){
+            int retorno = compare(tarefaAtual, novaTask);
+            if(retorno == 1){
+                converter.interrupt();
+            }
         }
+        
         return novaTask;
     }
 
@@ -109,6 +109,7 @@ public class PriorityScheduledConverter implements ScheduledConverter, Comparato
         while (watch.elapsed(timeUnit) <= interval) {
             ScheduledConverterTask task = (ScheduledConverterTask) queue.take();
             task.incCycles();
+            tarefaAtual = task;
             queue.add(task);
             try {
                 this.converter.processFor(tarefaAtual, getQuantum(tarefaAtual.getPriority()), timeUnit);
@@ -126,6 +127,9 @@ public class PriorityScheduledConverter implements ScheduledConverter, Comparato
          * - Cancele as tarefas não concluídas
          */
         //TODO implementar
+        for(ScheduledConverterTask task : queue){
+            task.cancel(true);
+        }
     }
 
     @Override
@@ -136,43 +140,36 @@ public class PriorityScheduledConverter implements ScheduledConverter, Comparato
         Priority prioridadeTask1 = task1.getPriority();
         Priority prioridadeTask2 = task2.getPriority();
         if(prioridadeTask1.equals(Priority.NORMAL) && prioridadeTask2.equals(Priority.HIGH)){
-            return -1;
+            return 1;
         }
         else if(prioridadeTask1.equals(Priority.LOW) && prioridadeTask2.equals(Priority.HIGH)){
-            return -1;
+            return 1;
         }
         else if(prioridadeTask1.equals(Priority.LOW) && prioridadeTask2.equals(Priority.NORMAL)){
-            return -1;
+            return 1;
         }
         else if(prioridadeTask1.equals(prioridadeTask2)){
             if(prioridadeTask1.equals(Priority.LOW)){
-                if(task1.getInputBytes() == task2.getInputBytes()){
-                    int retorno = comparaPrioridadePorCiclos(task1.getCycles(), task2.getCycles());
-                    return retorno;
+                int retorno = Long.compare(task1.getInputBytes(), task2.getInputBytes());
+                if(retorno == 0){
+                    retorno = Long.compare(task1.getCycles(), task2.getCycles());
                 }
-                else if(task1.getInputBytes() > task2.getInputBytes()){
-                    return 1;
+                if(retorno == 0){
+                    retorno = Long.compare(task1.getEpoch(), task2.getEpoch());
                 }
-                else if(task2.getInputBytes() > task1.getInputBytes()){
-                    return -1;
-                }
-            }
-            else if(prioridadeTask1.equals(Priority.NORMAL)){
-                int retorno = comparaPrioridadePorCiclos(task1.getCycles(), task2.getCycles());
                 return retorno;
             }
+            else if(prioridadeTask1.equals(Priority.NORMAL)){
+                int retorno = Long.compare(task1.getCycles(), task2.getCycles());
+                if(retorno == 0){
+                    return Long.compare(task1.getEpoch(), task2.getEpoch());
+                }
+                return retorno;
+            }
+            else if(prioridadeTask1.equals(Priority.HIGH)){
+                return Long.compare(task1.getEpoch(), task2.getEpoch());
+            }
         }
-        return 1;
-    }
-    
-    public int comparaPrioridadePorCiclos(long ciclosTask1, long ciclosTask2){
-        int retorno = 0;
-        if(ciclosTask1 > ciclosTask2){
-            retorno = 1;
-        }
-        else if(ciclosTask2 > ciclosTask1){
-            retorno = -1;
-        }
-        return retorno;
+        return 0;
     }
 }
